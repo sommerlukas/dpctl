@@ -58,7 +58,7 @@ from ._backend cimport (  # noqa: E211
     _backend_type,
     _queue_property_type,
 )
-from .memory._memory cimport _Memory
+from .memory._memory cimport _Memory, WorkGroupMemory
 
 import ctypes
 
@@ -240,6 +240,15 @@ cdef class _kernel_arg_type:
             self._name,
             p_name,
             _arg_data_type._LOCAL_ACCESSOR
+        )
+
+    @property
+    def dpctl_work_group_memory(self):
+        cdef str p_name = "dpctl_work_group_memory"
+        return kernel_arg_type_attribute(
+            self._name,
+            p_name,
+            _arg_data_type._WORK_GROUP_MEMORY
         )
 
 
@@ -824,6 +833,9 @@ cdef class SyclQueue(_SyclQueue):
             elif isinstance(arg, _Memory):
                 kargs[idx]= <void*>(<size_t>arg._pointer)
                 kargty[idx] = _arg_data_type._VOID_PTR
+            elif isinstance(arg, WorkGroupMemory):
+                kargs[idx] = <void*>(<size_t>arg.nbytes)
+                kargty[idx] = _arg_data_type._WORK_GROUP_MEMORY
             else:
                 ret = -1
         return ret
