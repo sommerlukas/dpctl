@@ -69,9 +69,6 @@ cdef public api class _Memory [object Py_MemoryObject, type Py_MemoryType]:
         object memory_owner=*
     )
 
-cdef public api class WorkGroupMemory [object PyWorkGroupMemoryObject, type PyWorkGroupMemoryType]:
-    cdef Py_ssize_t nbytes
-
 
 cdef public api class MemoryUSMShared(_Memory) [object PyMemoryUSMSharedObject,
                                             type PyMemoryUSMSharedType]:

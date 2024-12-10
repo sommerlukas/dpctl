@@ -34,7 +34,6 @@ from ._memory import (
     MemoryUSMShared,
     USMAllocationError,
     as_usm_memory,
-    WorkGroupMemory,
 )
 
 __all__ = [
@@ -43,5 +42,4 @@ __all__ = [
     "MemoryUSMShared",
     "USMAllocationError",
     "as_usm_memory",
-    "WorkGroupMemory",
 ]
