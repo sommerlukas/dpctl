@@ -71,6 +71,7 @@ cdef extern from "syclinterface/dpctl_sycl_enum_types.h":
         _VOID_PTR           'DPCTL_VOID_PTR',
         _LOCAL_ACCESSOR     'DPCTL_LOCAL_ACCESSOR',
         _WORK_GROUP_MEMORY  'DPCTL_WORK_GROUP_MEMORY'
+        _RAW_KERNEL_ARG     'DPCTL_RAW_KERNEL_ARG'
 
     ctypedef enum _queue_property_type 'DPCTLQueuePropertyType':
         _DEFAULT_PROPERTY   'DPCTL_DEFAULT_PROPERTY'
@@ -469,3 +470,12 @@ cdef extern from "syclinterface/dpctl_sycl_usm_interface.h":
     cdef DPCTLSyclDeviceRef DPCTLUSM_GetPointerDevice(
         DPCTLSyclUSMRef MRef,
         DPCTLSyclContextRef CRef)
+
+cdef extern from "syclinterface/dpctl_sycl_extension_interface.h":
+    cdef struct DPCTLOpaqueSyclRawKernelArg
+    ctypedef DPCTLOpaqueSyclRawKernelArg   *DPCTLSyclRawKernelArgRef
+    cdef DPCTLSyclRawKernelArgRef DPCTLRawKernelArg_Create(
+        size_t count,
+        void* bytes)
+    cdef void DPCTLRawKernelArg_Delete(
+        DPCTLSyclRawKernelArgRef Ref)

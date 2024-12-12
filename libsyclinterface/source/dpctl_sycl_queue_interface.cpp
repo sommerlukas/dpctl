@@ -30,6 +30,7 @@
 #include "dpctl_sycl_context_interface.h"
 #include "dpctl_sycl_device_interface.h"
 #include "dpctl_sycl_device_manager.h"
+#include "dpctl_sycl_extension_interface.h"
 #include "dpctl_sycl_type_casters.hpp"
 
 #include <stddef.h>
@@ -222,6 +223,14 @@ bool set_kernel_arg(handler &cgh,
         sycl::ext::oneapi::experimental::work_group_memory<char[]> mem{
             num_bytes, cgh};
         cgh.set_arg(idx, mem);
+        break;
+    }
+    case DPCTL_RAW_KERNEL_ARG:
+    {
+        auto ref = static_cast<DPCTLSyclRawKernelArgRef>(Arg);
+        sycl::ext::oneapi::experimental::raw_kernel_arg *raw_arg =
+            unwrap<sycl::ext::oneapi::experimental::raw_kernel_arg>(ref);
+        cgh.set_arg(idx, *raw_arg);
         break;
     }
     default:
