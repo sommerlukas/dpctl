@@ -42,6 +42,10 @@ cdef extern from "sycl/sycl.hpp" namespace "sycl":
         "sycl::kernel_bundle<sycl::bundle_state::executable>":
         pass
 
+    cdef cppclass raw_kernel_arg \
+        "sycl::ext::oneapi::experimental::raw_kernel_arg":
+        pass
+
 cdef extern from "syclinterface/dpctl_sycl_type_casters.hpp" \
     namespace "dpctl::syclinterface":
     # queue
@@ -67,3 +71,11 @@ cdef extern from "syclinterface/dpctl_sycl_type_casters.hpp" \
         "dpctl::syclinterface::wrap<sycl::event>" (const event *)
     cdef event * unwrap_event "dpctl::syclinterface::unwrap<sycl::event>" (
         dpctl_backend.DPCTLSyclEventRef)
+
+    # raw kernel arg
+    cdef dpctl_backend.DPCTLSyclRawKernelArgRef wrap_raw_arg \
+        "dpctl::syclinterface::wrap<sycl::ext::oneapi::experimental::raw_kernel_arg>" \
+        (const raw_kernel_arg *)
+    cdef raw_kernel_arg * unwrap_raw_arg \
+        "dpctl::syclinterface::unwrap<sycl::ext::oneapi::experimental::raw_kernel_arg>" (
+        dpctl_backend.DPCTLSyclRawKernelArgRef)
