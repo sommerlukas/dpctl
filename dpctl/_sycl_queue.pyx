@@ -60,6 +60,7 @@ from ._backend cimport (  # noqa: E211
 )
 from .memory._memory cimport _Memory
 from .experimental._work_group_memory cimport WorkGroupMemory
+from .experimental._raw_kernel_arg cimport RawKernelArg
 
 import ctypes
 
@@ -250,6 +251,15 @@ cdef class _kernel_arg_type:
             self._name,
             p_name,
             _arg_data_type._WORK_GROUP_MEMORY
+        )
+
+    @property
+    def dpctl_raw_kernel_arg(self):
+        cdef str p_name = "dpctl_raw_kernel_arg"
+        return kernel_arg_type_attribute(
+            self._name,
+            p_name,
+            _arg_data_type._RAW_KERNEL_ARG
         )
 
 
@@ -837,6 +847,9 @@ cdef class SyclQueue(_SyclQueue):
             elif isinstance(arg, WorkGroupMemory):
                 kargs[idx] = <void*>(<size_t>arg.nbytes)
                 kargty[idx] = _arg_data_type._WORK_GROUP_MEMORY
+            elif isinstance(arg, RawKernelArg):
+                kargs[idx] = <void*>(<size_t>arg._ref)
+                kargty[idx] = _arg_data_type._RAW_KERNEL_ARG
             else:
                 ret = -1
         return ret

@@ -24,3 +24,4 @@ implemented in dpctl.experimental.*.pyx.
 
 
 from dpctl.experimental._work_group_memory cimport *
+from dpctl.experimental._raw_kernel_arg cimport *

@@ -24,6 +24,11 @@ from ._work_group_memory import (
     WorkGroupMemory,
 )
 
+from ._raw_kernel_arg import (
+    RawKernelArg,
+)
+
 __all__ = [
     "WorkGroupMemory",
+    "RawKernelArg",
 ]

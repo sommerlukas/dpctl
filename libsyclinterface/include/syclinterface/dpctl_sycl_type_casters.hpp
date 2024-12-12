@@ -80,6 +80,11 @@ DEFINE_SIMPLE_CONVERSION_FUNCTIONS(std::vector<DPCTLSyclPlatformRef>,
 DEFINE_SIMPLE_CONVERSION_FUNCTIONS(std::vector<DPCTLSyclEventRef>,
                                    DPCTLEventVectorRef)
 
+#include "dpctl_sycl_extension_interface.h"
+DEFINE_SIMPLE_CONVERSION_FUNCTIONS(
+    sycl::ext::oneapi::experimental::raw_kernel_arg,
+    DPCTLSyclRawKernelArgRef)
+
 #endif
 
 } // namespace dpctl::syclinterface
