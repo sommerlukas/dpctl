@@ -67,7 +67,15 @@ import ctypes
 from .enum_types import backend_type
 
 from cpython cimport pycapsule
-from cpython.buffer cimport PyObject_CheckBuffer
+from cpython.buffer cimport (
+    PyObject_CheckBuffer,
+    Py_buffer,
+    PyObject_GetBuffer,
+    PyBUF_SIMPLE,
+    PyBUF_ANY_CONTIGUOUS,
+    PyBUF_WRITABLE,
+    PyBuffer_Release
+)
 from cpython.ref cimport Py_DECREF, Py_INCREF, PyObject
 from libc.stdlib cimport free, malloc
 
@@ -360,12 +368,21 @@ cdef DPCTLSyclEventRef _memcpy_impl(
     cdef DPCTLSyclEventRef ERef = NULL
     cdef const unsigned char[::1] src_host_buf = None
     cdef unsigned char[::1] dst_host_buf = None
+    cdef Py_buffer src_buf_view
+    cdef Py_buffer dst_buf_view
+    cdef bint src_is_buf = False
+    cdef bint dst_is_buf = False
+    cdef int ret_code = 0
+    
 
     if isinstance(src, _Memory):
         c_src_ptr = <void*>(<_Memory>src).get_data_ptr()
     elif _is_buffer(src):
-        src_host_buf = src
-        c_src_ptr = <void *>&src_host_buf[0]
+        ret_code = PyObject_GetBuffer(src, &src_buf_view, PyBUF_SIMPLE | PyBUF_ANY_CONTIGUOUS)
+        if ret_code != 0:
+            raise RuntimeError("Could not access buffer")
+        c_src_ptr = src_buf_view.buf
+        src_is_buf = True
     else:
         raise TypeError(
              "Parameter `src` should have either type "
@@ -376,8 +393,11 @@ cdef DPCTLSyclEventRef _memcpy_impl(
     if isinstance(dst, _Memory):
         c_dst_ptr = <void*>(<_Memory>dst).get_data_ptr()
     elif _is_buffer(dst):
-        dst_host_buf = dst
-        c_dst_ptr = <void *>&dst_host_buf[0]
+        ret_code = PyObject_GetBuffer(dst, &dst_buf_view, PyBUF_SIMPLE | PyBUF_ANY_CONTIGUOUS | PyBUF_WRITABLE)
+        if ret_code != 0:
+            raise RuntimeError("Could not access buffer")
+        c_dst_ptr = dst_buf_view.buf
+        dst_is_buf = True
     else:
         raise TypeError(
              "Parameter `dst` should have either type "
@@ -396,6 +416,12 @@ cdef DPCTLSyclEventRef _memcpy_impl(
             dep_events,
             dep_events_count
         )
+
+    if src_is_buf:
+        PyBuffer_Release(&src_buf_view)
+    if dst_is_buf:
+        PyBuffer_Release(&dst_buf_view)
+
     return ERef
 
 
