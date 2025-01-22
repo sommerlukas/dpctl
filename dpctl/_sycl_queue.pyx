@@ -366,8 +366,6 @@ cdef DPCTLSyclEventRef _memcpy_impl(
     cdef void *c_dst_ptr = NULL
     cdef void *c_src_ptr = NULL
     cdef DPCTLSyclEventRef ERef = NULL
-    cdef const unsigned char[::1] src_host_buf = None
-    cdef unsigned char[::1] dst_host_buf = None
     cdef Py_buffer src_buf_view
     cdef Py_buffer dst_buf_view
     cdef bint src_is_buf = False
