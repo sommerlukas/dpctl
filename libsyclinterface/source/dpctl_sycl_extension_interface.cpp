@@ -44,7 +44,6 @@ __dpctl_give DPCTLSyclRawKernelArgRef DPCTLRawKernelArg_Create(size_t count,
     DPCTLSyclRawKernelArgRef ka = nullptr;
 
     try {
-        auto ptr = static_cast<uint32_t*>(bytes);
         auto RawArg = new syclext::raw_kernel_arg(bytes, count);
         ka = wrap<syclext::raw_kernel_arg>(RawArg);
     } catch (std::exception const &e) {
