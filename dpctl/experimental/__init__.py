@@ -1,6 +1,6 @@
 #                      Data Parallel Control (dpctl)
 #
-# Copyright 2020-2024 Intel Corporation
+# Copyright 2020-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@
     **Data Parallel Control Experimental" provides Python objects to interface
     with different experimental SYCL language extensions defined by the DPC++
     SYCL implementation.
-
 """
+
 from ._work_group_memory import (
     WorkGroupMemory,
 )
