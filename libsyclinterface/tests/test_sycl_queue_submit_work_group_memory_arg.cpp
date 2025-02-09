@@ -35,6 +35,8 @@
 
 #include <stddef.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <utility>
@@ -58,6 +60,9 @@ void submit_kernel(DPCTLSyclQueueRef QRef,
                    DPCTLKernelArgType kernelArgTy,
                    std::string kernelName)
 {
+
+#if SYCL_EXT_ONEAPI_WORK_GROUP_MEMORY
+
     constexpr std::size_t NARGS = 2;
     constexpr std::size_t RANGE_NDIMS = 1;
 
@@ -72,16 +77,14 @@ void submit_kernel(DPCTLSyclQueueRef QRef,
         a_ptr[i] = 0;
     }
 
-    std::size_t lws = SIZE / 10;
-
-    auto la1 = MDLocalAccessor{1, kernelArgTy, lws, 1, 1};
-
     // Create kernel args for vector_add
+    std::size_t lws = SIZE / 10;
     std::size_t gRange[] = {SIZE};
     std::size_t lRange[] = {lws};
-    void *args_1d[NARGS] = {unwrap<void>(a), (void *)&la1};
+    std::uintptr_t wgm_sz = lws * sizeof(T);
+    void *args_1d[NARGS] = {unwrap<void>(a), (void *)wgm_sz};
     DPCTLKernelArgType addKernelArgTypes[] = {DPCTL_VOID_PTR,
-                                              DPCTL_LOCAL_ACCESSOR};
+                                              DPCTL_WORK_GROUP_MEMORY};
 
     DPCTLSyclEventRef E1Ref = DPCTLQueue_SubmitNDRange(
         kernel, QRef, args_1d, addKernelArgTypes, NARGS, gRange, lRange,
@@ -89,8 +92,7 @@ void submit_kernel(DPCTLSyclQueueRef QRef,
     ASSERT_TRUE(E1Ref != nullptr);
 
     DPCTLSyclEventRef DepEv1[] = {E1Ref};
-    auto la2 = MDLocalAccessor{2, kernelArgTy, lws, 1, 1};
-    void *args_2d[NARGS] = {unwrap<void>(a), (void *)&la2};
+    void *args_2d[NARGS] = {unwrap<void>(a), (void *)wgm_sz};
 
     DPCTLSyclEventRef E2Ref =
         DPCTLQueue_SubmitNDRange(kernel, QRef, args_2d, addKernelArgTypes,
@@ -98,8 +100,7 @@ void submit_kernel(DPCTLSyclQueueRef QRef,
     ASSERT_TRUE(E2Ref != nullptr);
 
     DPCTLSyclEventRef DepEv2[] = {E1Ref, E2Ref};
-    auto la3 = MDLocalAccessor{3, kernelArgTy, lws, 1, 1};
-    void *args_3d[NARGS] = {unwrap<void>(a), (void *)&la3};
+    void *args_3d[NARGS] = {unwrap<void>(a), (void *)wgm_sz};
 
     DPCTLSyclEventRef E3Ref =
         DPCTLQueue_SubmitNDRange(kernel, QRef, args_3d, addKernelArgTypes,
@@ -116,14 +117,19 @@ void submit_kernel(DPCTLSyclQueueRef QRef,
     DPCTLEvent_Delete(E3Ref);
     DPCTLKernel_Delete(kernel);
     DPCTLfree_with_queue((DPCTLSyclUSMRef)a, QRef);
+#else
+    GTEST_SKIP() << "Skipping work-group-memory test since the compiler does "
+                    "not support this feature";
+    return;
+#endif
 }
 
 } /* end of anonymous namespace */
 
 /*
-// The local_accessor_kernel spv files were generated from the SYCL program
+// The work_group_memory_kernel spv files were generated from the SYCL program
 // included in this comment. The program can be compiled using
-// `icpx -fsycl local_accessor_kernel.cpp`. After that if the generated
+// `icpx -fsycl work_group_memory_kernel.cpp`. After that if the generated
 // executable is run with the environment variable `SYCL_DUMP_IMAGES=1`, icpx
 // runtime will dump all offload sections of fat binary to the current working
 // directory. When tested with DPC++ 2024.0 the kernels are split across two
@@ -139,17 +145,19 @@ void submit_kernel(DPCTLSyclQueueRef QRef,
 #include <sstream>
 #include <sycl/sycl.hpp>
 
+namespace syclexp = sycl::ext::oneapi::experimental;
+
 template <typename T>
-class SyclKernel_SLM
+class SyclKernel_WGM
 {
 private:
     T N_;
     T *a_ = nullptr;
-    sycl::local_accessor<T, 1> slm_;
+    syclexp::work_group_memory<T[]> wgm_;
 
 public:
-    SyclKernel_SLM(T *a, sycl::local_accessor<T, 1> slm)
-        : a_(a), slm_(slm)
+  SyclKernel_WGM(T *a, syclexp::work_group_memory<T[]> wgm)
+        : a_(a), wgm_(wgm)
     {
     }
 
@@ -157,24 +165,37 @@ public:
     {
         int i = it.get_global_id();
         int j = it.get_local_id();
-        slm_[j] = 2;
+        wgm_[j] = 2;
         auto g = it.get_group();
         group_barrier(g);
         auto temp = 0;
         for (auto idx = 0ul; idx < it.get_local_range(0); ++idx)
-            temp += slm_[idx];
+            temp += wgm_[idx];
         a_[i] = temp * (i + 1);
     }
 };
 
 template <typename T>
-void submit_kernel(sycl::queue q, const unsigned long N, T *a)
+sycl::event
+submit_kernel(sycl::queue q, const unsigned long N, T *a)
 {
+  auto gws = N;
+  auto lws = (N/10);
+
+  sycl::range<1> gRange{gws};
+  sycl::range<1> lRange{lws};
+  sycl::nd_range<1> ndRange{gRange, lRange};
+
+  sycl::event e =
     q.submit([&](auto &h)
-             {
-        sycl::local_accessor<T, 1> slm(sycl::range(N/10), h);
-        h.parallel_for(sycl::nd_range(sycl::range{N}, sycl::range{N/10}),
-                              SyclKernel_SLM<T>(a, slm)); });
+    {
+        syclexp::work_group_memory<T[]> wgm(lws, h);
+        h.parallel_for(
+            ndRange,
+            SyclKernel_WGM<T>(a, wgm));
+    });
+
+  return e;
 }
 
 template <typename T>
@@ -182,8 +203,7 @@ void driver(std::size_t N)
 {
     sycl::queue q;
     auto *a = sycl::malloc_shared<T>(N, q);
-    submit_kernel(q, N, a);
-    q.wait();
+    submit_kernel(q, N, a).wait();
     sycl::free(a, q);
 }
 
@@ -207,10 +227,9 @@ int main(int argc, const char **argv)
 
     return 0;
 }
-
 */
 
-struct TestQueueSubmitWithLocalAccessor : public ::testing::Test
+struct TestQueueSubmitWithWorkGroupMemory : public ::testing::Test
 {
     std::ifstream spirvFile;
     std::size_t spirvFileSize_;
@@ -218,11 +237,11 @@ struct TestQueueSubmitWithLocalAccessor : public ::testing::Test
     DPCTLSyclQueueRef QRef = nullptr;
     DPCTLSyclKernelBundleRef KBRef = nullptr;
 
-    TestQueueSubmitWithLocalAccessor()
+    TestQueueSubmitWithWorkGroupMemory()
     {
         DPCTLSyclDeviceSelectorRef DSRef = nullptr;
         DPCTLSyclDeviceRef DRef = nullptr;
-        const char *test_spv_fn = "./local_accessor_kernel_inttys_fp32.spv";
+        const char *test_spv_fn = "./work_group_memory_kernel_inttys_fp32.spv";
 
         spirvFile.open(test_spv_fn, std::ios::binary | std::ios::ate);
         spirvFileSize_ = std::filesystem::file_size(test_spv_fn);
@@ -242,7 +261,7 @@ struct TestQueueSubmitWithLocalAccessor : public ::testing::Test
         DPCTLDeviceSelector_Delete(DSRef);
     }
 
-    ~TestQueueSubmitWithLocalAccessor()
+    ~TestQueueSubmitWithWorkGroupMemory()
     {
         spirvFile.close();
         DPCTLQueue_Delete(QRef);
@@ -250,7 +269,7 @@ struct TestQueueSubmitWithLocalAccessor : public ::testing::Test
     }
 };
 
-struct TestQueueSubmitWithLocalAccessorFP64 : public ::testing::Test
+struct TestQueueSubmitWithWorkGroupMemoryFP64 : public ::testing::Test
 {
     std::ifstream spirvFile;
     std::size_t spirvFileSize_;
@@ -259,10 +278,10 @@ struct TestQueueSubmitWithLocalAccessorFP64 : public ::testing::Test
     DPCTLSyclQueueRef QRef = nullptr;
     DPCTLSyclKernelBundleRef KBRef = nullptr;
 
-    TestQueueSubmitWithLocalAccessorFP64()
+    TestQueueSubmitWithWorkGroupMemoryFP64()
     {
         DPCTLSyclDeviceSelectorRef DSRef = nullptr;
-        const char *test_spv_fn = "./local_accessor_kernel_fp64.spv";
+        const char *test_spv_fn = "./work_group_memory_kernel_fp64.spv";
 
         spirvFile.open(test_spv_fn, std::ios::binary | std::ios::ate);
         spirvFileSize_ = std::filesystem::file_size(test_spv_fn);
@@ -280,7 +299,7 @@ struct TestQueueSubmitWithLocalAccessorFP64 : public ::testing::Test
         DPCTLDeviceSelector_Delete(DSRef);
     }
 
-    ~TestQueueSubmitWithLocalAccessorFP64()
+    ~TestQueueSubmitWithWorkGroupMemoryFP64()
     {
         spirvFile.close();
         DPCTLDevice_Delete(DRef);
@@ -289,93 +308,74 @@ struct TestQueueSubmitWithLocalAccessorFP64 : public ::testing::Test
     }
 };
 
-TEST_F(TestQueueSubmitWithLocalAccessor, CheckForInt8)
+TEST_F(TestQueueSubmitWithWorkGroupMemory, CheckForInt8)
 {
     submit_kernel<std::int8_t>(QRef, KBRef, spirvBuffer_, spirvFileSize_,
                                DPCTLKernelArgType::DPCTL_INT8_T,
-                               "_ZTS14SyclKernel_SLMIaE");
+                               "_ZTS14SyclKernel_WGMIaE");
 }
 
-TEST_F(TestQueueSubmitWithLocalAccessor, CheckForUInt8)
+TEST_F(TestQueueSubmitWithWorkGroupMemory, CheckForUInt8)
 {
     submit_kernel<std::uint8_t>(QRef, KBRef, spirvBuffer_, spirvFileSize_,
                                 DPCTLKernelArgType::DPCTL_UINT8_T,
-                                "_ZTS14SyclKernel_SLMIhE");
+                                "_ZTS14SyclKernel_WGMIhE");
 }
 
-TEST_F(TestQueueSubmitWithLocalAccessor, CheckForInt16)
+TEST_F(TestQueueSubmitWithWorkGroupMemory, CheckForInt16)
 {
     submit_kernel<std::int16_t>(QRef, KBRef, spirvBuffer_, spirvFileSize_,
                                 DPCTLKernelArgType::DPCTL_INT16_T,
-                                "_ZTS14SyclKernel_SLMIsE");
+                                "_ZTS14SyclKernel_WGMIsE");
 }
 
-TEST_F(TestQueueSubmitWithLocalAccessor, CheckForUInt16)
+TEST_F(TestQueueSubmitWithWorkGroupMemory, CheckForUInt16)
 {
     submit_kernel<std::uint16_t>(QRef, KBRef, spirvBuffer_, spirvFileSize_,
                                  DPCTLKernelArgType::DPCTL_UINT16_T,
-                                 "_ZTS14SyclKernel_SLMItE");
+                                 "_ZTS14SyclKernel_WGMItE");
 }
 
-TEST_F(TestQueueSubmitWithLocalAccessor, CheckForInt32)
+TEST_F(TestQueueSubmitWithWorkGroupMemory, CheckForInt32)
 {
     submit_kernel<std::int32_t>(QRef, KBRef, spirvBuffer_, spirvFileSize_,
                                 DPCTLKernelArgType::DPCTL_INT32_T,
-                                "_ZTS14SyclKernel_SLMIiE");
+                                "_ZTS14SyclKernel_WGMIiE");
 }
 
-TEST_F(TestQueueSubmitWithLocalAccessor, CheckForUInt32)
+TEST_F(TestQueueSubmitWithWorkGroupMemory, CheckForUInt32)
 {
     submit_kernel<std::uint32_t>(QRef, KBRef, spirvBuffer_, spirvFileSize_,
                                  DPCTLKernelArgType::DPCTL_UINT32_T,
-                                 "_ZTS14SyclKernel_SLMIjE");
+                                 "_ZTS14SyclKernel_WGMIjE");
 }
 
-TEST_F(TestQueueSubmitWithLocalAccessor, CheckForInt64)
+TEST_F(TestQueueSubmitWithWorkGroupMemory, CheckForInt64)
 {
     submit_kernel<std::int64_t>(QRef, KBRef, spirvBuffer_, spirvFileSize_,
                                 DPCTLKernelArgType::DPCTL_INT64_T,
-                                "_ZTS14SyclKernel_SLMIlE");
+                                "_ZTS14SyclKernel_WGMIlE");
 }
 
-TEST_F(TestQueueSubmitWithLocalAccessor, CheckForUInt64)
+TEST_F(TestQueueSubmitWithWorkGroupMemory, CheckForUInt64)
 {
     submit_kernel<std::uint64_t>(QRef, KBRef, spirvBuffer_, spirvFileSize_,
                                  DPCTLKernelArgType::DPCTL_UINT64_T,
-                                 "_ZTS14SyclKernel_SLMImE");
+                                 "_ZTS14SyclKernel_WGMImE");
 }
 
-TEST_F(TestQueueSubmitWithLocalAccessor, CheckForFloat)
+TEST_F(TestQueueSubmitWithWorkGroupMemory, CheckForFloat)
 {
     submit_kernel<float>(QRef, KBRef, spirvBuffer_, spirvFileSize_,
                          DPCTLKernelArgType::DPCTL_FLOAT32_T,
-                         "_ZTS14SyclKernel_SLMIfE");
+                         "_ZTS14SyclKernel_WGMIfE");
 }
 
-TEST_F(TestQueueSubmitWithLocalAccessorFP64, CheckForDouble)
+TEST_F(TestQueueSubmitWithWorkGroupMemoryFP64, CheckForDouble)
 {
     if (DPCTLDevice_HasAspect(DRef, DPCTLSyclAspectType::fp64)) {
         submit_kernel<double>(QRef, KBRef, spirvBuffer_, spirvFileSize_,
                               DPCTLKernelArgType::DPCTL_FLOAT64_T,
-                              "_ZTS14SyclKernel_SLMIdE");
+                              "_ZTS14SyclKernel_WGMIdE");
     }
-}
-
-TEST_F(TestQueueSubmitWithLocalAccessor, CheckForUnsupportedArgTy)
-{
-    std::size_t gRange[] = {SIZE};
-    std::size_t lRange[] = {SIZE / 10};
-    std::size_t RANGE_NDIMS = 1;
-    constexpr std::size_t NARGS = 2;
-
-    auto la = MDLocalAccessor{1, DPCTL_UNSUPPORTED_KERNEL_ARG, SIZE / 10, 1, 1};
-    auto kernel = DPCTLKernelBundle_GetKernel(KBRef, "_ZTS14SyclKernel_SLMImE");
-    void *args[NARGS] = {unwrap<void>(nullptr), (void *)&la};
-    DPCTLKernelArgType addKernelArgTypes[] = {DPCTL_VOID_PTR,
-                                              DPCTL_LOCAL_ACCESSOR};
-    auto ERef =
-        DPCTLQueue_SubmitNDRange(kernel, QRef, args, addKernelArgTypes, NARGS,
-                                 gRange, lRange, RANGE_NDIMS, nullptr, 0);
-
-    ASSERT_TRUE(ERef == nullptr);
 }
