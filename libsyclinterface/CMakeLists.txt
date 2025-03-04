@@ -59,7 +59,7 @@ if(DPCTL_ENABLE_L0_PROGRAM_CREATION)
         include(GetLevelZeroHeaders)
         get_level_zero_headers()
     endif()
-    if (UNIX)
+    if (UNIX AND NOT DEFINED LIBZE_LOADER_FILENAME)
         find_library(PI_LEVEL_ZERO_LIB
             NAMES pi_level_zero ur_adapter_level_zero
             HINTS ${IntelSyclCompiler_LIBRARY_DIR}
